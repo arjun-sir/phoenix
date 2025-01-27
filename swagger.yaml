@@ -6,10 +6,10 @@ info:
   contact:
     name: IMF Tech Division
 servers:
-  - url: http://localhost:3000
-    description: Development server
   - url: https://phoenix-5rxl.onrender.com
     description: Production server
+  - url: http://localhost:3000
+    description: Development server
 
 components:
   securitySchemes:
