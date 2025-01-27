@@ -6,6 +6,12 @@ A secure and sophisticated API system for managing IMF's top-secret gadget inven
 
 Manage your covert operation gadgets with military-grade security. From laser watches to exploding pens, keep track of all your spy gear in one secure location.
 
+## 🔗 Links
+
+- [Swagger UI](https://phoenix-5rxl.onrender.com/api-docs)
+- [Deployed API](https://phoenix-5rxl.onrender.com)
+
+
 ## 🚀 Features
 
 - **Secure Authentication** 
