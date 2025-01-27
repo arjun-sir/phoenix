@@ -130,6 +130,12 @@ export const updateGadget = async (req: Request, res: Response) => {
       data: {
         name: name || existingGadget.name,
         status: status || existingGadget.status,
+        DecommissionedAt:
+          status === "Decommissioned"
+            ? existingGadget.DecommissionedAt
+              ? existingGadget.DecommissionedAt // Keep existing date if already set
+              : new Date() // Set new date if not already decommissioned
+            : existingGadget.DecommissionedAt,
       },
     });
 
