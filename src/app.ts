@@ -11,6 +11,6 @@ app.set("trust proxy", 1);
 app.use(express.json());
 
 app.use("/auth", authRoutes);
-app.use("/", authenticateToken as RequestHandler, gadgetRoutes);
+app.use("/gadgets", authenticateToken as RequestHandler, gadgetRoutes);
 
 export default app;
