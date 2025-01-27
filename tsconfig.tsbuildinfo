@@ -1,0 +1,1 @@
+{"root":["./src/app.ts","./src/index.ts","./src/controllers/auth.ts","./src/controllers/gadgets.ts","./src/middlewares/auth.ts","./src/middlewares/cache.ts","./src/middlewares/ratelimiter.ts","./src/routes/auth.ts","./src/routes/gadgets.ts","./src/utils/prismaclient.ts","./src/utils/redisclient.ts"],"version":"5.7.3"}
