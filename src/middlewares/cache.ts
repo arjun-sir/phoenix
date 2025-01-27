@@ -29,3 +29,12 @@ export const saveToCache = async (key: string, data: any, ttl = 3600) => {
 export const invalidateCache = async (...keys: string[]) => {
   await redisClient.del(keys);
 };
+
+// save code to redis
+export const saveCodeToRedis = async (key: string, code: string) => {
+  await redisClient.set(key, code, { EX: 300 });
+};
+
+export const getCachedCode = async (key: string) => {
+  return await redisClient.get(key);
+};
