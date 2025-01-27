@@ -13,8 +13,14 @@ const router = express.Router();
 
 router.get(
   "/",
-  cacheMiddleware(() => CACHE_KEYS.GADGETS_LIST),
-  getGadgets
+  cacheMiddleware((req) => {
+    const status = req.query.status as string;
+    const userId = req.user!.id;
+    return status
+      ? CACHE_KEYS.STATUS_GADGETS(status, userId)
+      : CACHE_KEYS.ALL_GADGETS(userId);
+  }),
+  getGadgets as RequestHandler
 );
 router.post("/", createGadget as RequestHandler);
 router.patch("/:id", updateGadget as RequestHandler);

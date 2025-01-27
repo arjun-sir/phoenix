@@ -18,27 +18,48 @@ const GADGET_PREFIXES = [
 ];
 
 export const CACHE_KEYS = {
-  GADGETS_LIST: "gadgets_list",
-  GADGET_DETAIL: (id: string) => `gadget_${id}`,
+  ALL_GADGETS: (userId: string) => `gadgets_all_${userId}`,
+  STATUS_GADGETS: (status: string, userId: string) =>
+    `gadgets_${status}_${userId}`,
 };
 
 export const getGadgets = async (req: Request, res: Response) => {
+  const { status } = req.query;
+  const userId = req.user!.id;
+
   try {
-    const gadgets = await prisma.gadget.findMany();
+    if (
+      status &&
+      !Object.values(GadgetStatus).includes(status as GadgetStatus)
+    ) {
+      return res.status(400).json({ error: "Invalid status value" });
+    }
+
+    const gadgets = await prisma.gadget.findMany({
+      where: {
+        userId,
+        ...(status
+          ? { status: status as GadgetStatus }
+          : { status: "Available" }),
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
     const gadgetsWithProb = gadgets.map((gadget) => ({
       ...gadget,
       missionSuccessProbability: `${Math.floor(Math.random() * 100) + 1}%`,
     }));
 
-    // Cache the list
-    await saveToCache(CACHE_KEYS.GADGETS_LIST, gadgetsWithProb);
-
-    // Cache individual items
-    await Promise.all(
-      gadgetsWithProb.map((gadget) =>
-        saveToCache(CACHE_KEYS.GADGET_DETAIL(gadget.id), gadget)
-      )
-    );
+    if (status) {
+      await saveToCache(
+        CACHE_KEYS.STATUS_GADGETS(status as string, userId),
+        gadgetsWithProb
+      );
+    } else {
+      await saveToCache(CACHE_KEYS.ALL_GADGETS(userId), gadgetsWithProb);
+    }
 
     res.json(gadgetsWithProb);
   } catch (error) {
@@ -47,8 +68,8 @@ export const getGadgets = async (req: Request, res: Response) => {
 };
 
 export const createGadget = async (req: Request, res: Response) => {
+  const userId = req.user!.id;
   try {
-    // Generate random codename
     const prefix =
       GADGET_PREFIXES[Math.floor(Math.random() * GADGET_PREFIXES.length)];
     const suffix = Math.floor(Math.random() * 1000);
@@ -58,11 +79,14 @@ export const createGadget = async (req: Request, res: Response) => {
       data: {
         name: codename,
         status: "Available",
-        userId: req.user!.id, // From auth middleware
+        userId: req.user!.id,
       },
     });
 
-    await invalidateCache(CACHE_KEYS.GADGETS_LIST);
+    await Promise.all([
+      invalidateCache(CACHE_KEYS.ALL_GADGETS(userId)),
+      invalidateCache(CACHE_KEYS.STATUS_GADGETS("Available", userId)),
+    ]);
     res.status(201).json(newGadget);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -71,16 +95,14 @@ export const createGadget = async (req: Request, res: Response) => {
 
 export const updateGadget = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { name, status } = req.body;
+  const { status } = req.body;
   const userId = req.user!.id;
 
   try {
-    //check if status is valid
     if (!Object.values(GadgetStatus).includes(status)) {
       return res.status(400).json({ error: "Invalid status" });
     }
 
-    // First check if gadget exists and belongs to user
     const existingGadget = await prisma.gadget.findFirst({
       where: {
         id,
@@ -93,19 +115,17 @@ export const updateGadget = async (req: Request, res: Response) => {
     }
 
     const updatedGadget = await prisma.gadget.update({
-      where: {
-        id,
-      },
+      where: { id },
       data: {
-        name: name || existingGadget.name,
         status: status || existingGadget.status,
       },
     });
 
-    await invalidateCache(
-      CACHE_KEYS.GADGETS_LIST,
-      CACHE_KEYS.GADGET_DETAIL(id)
-    );
+    await Promise.all([
+      invalidateCache(CACHE_KEYS.ALL_GADGETS(userId)),
+      invalidateCache(CACHE_KEYS.STATUS_GADGETS(existingGadget.status, userId)),
+      invalidateCache(CACHE_KEYS.STATUS_GADGETS(updatedGadget.status, userId)),
+    ]);
     res.json(updatedGadget);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -117,7 +137,6 @@ export const decommissionGadget = async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
   try {
-    // First check if gadget exists and belongs to user
     const existingGadget = await prisma.gadget.findFirst({
       where: {
         id,
@@ -136,14 +155,14 @@ export const decommissionGadget = async (req: Request, res: Response) => {
       data: {
         status: "Decommissioned",
         DecommissionedAt: new Date(),
-        updatedAt: new Date(),
       },
     });
 
-    await invalidateCache(
-      CACHE_KEYS.GADGETS_LIST,
-      CACHE_KEYS.GADGET_DETAIL(id)
-    );
+    await Promise.all([
+      invalidateCache(CACHE_KEYS.ALL_GADGETS(userId)),
+      invalidateCache(CACHE_KEYS.STATUS_GADGETS(existingGadget.status, userId)),
+      invalidateCache(CACHE_KEYS.STATUS_GADGETS("Decommissioned", userId)),
+    ]);
     res.json(decommissionedGadget);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -155,14 +174,18 @@ export const selfDestructGadget = async (req: Request, res: Response) => {
   const { confirmationCode } = req.body;
   const userId = req.user!.id;
 
-  const validCode = Math.floor(Math.random() * 100000);
+  if (!confirmationCode) {
+    return res.status(400).json({ error: "Confirmation code is required" });
+  }
+
+  // Generate a random 1-digit code between 0 and 9
+  const validCode = Math.floor(Math.random() * 10);
 
   if (confirmationCode != validCode) {
     return res.status(400).json({ error: "Invalid confirmation code" });
   }
 
   try {
-    // First check if gadget exists and belongs to user
     const existingGadget = await prisma.gadget.findFirst({
       where: {
         id,
@@ -176,15 +199,20 @@ export const selfDestructGadget = async (req: Request, res: Response) => {
         .json({ error: "Gadget not found or does not belong to user" });
     }
 
+    if (existingGadget.status === "Destroyed") {
+      return res.status(400).json({ error: "Gadget already destroyed" });
+    }
+
     const destroyedGadget = await prisma.gadget.update({
       where: { id },
       data: { status: "Destroyed" },
     });
 
-    await invalidateCache(
-      CACHE_KEYS.GADGETS_LIST,
-      CACHE_KEYS.GADGET_DETAIL(id)
-    );
+    await Promise.all([
+      invalidateCache(CACHE_KEYS.ALL_GADGETS(userId)),
+      invalidateCache(CACHE_KEYS.STATUS_GADGETS(existingGadget.status, userId)),
+      invalidateCache(CACHE_KEYS.STATUS_GADGETS("Destroyed", userId)),
+    ]);
     res.json({
       message: "This gadget will self-destruct in 5 seconds... Not kidding!",
       gadget: destroyedGadget,
