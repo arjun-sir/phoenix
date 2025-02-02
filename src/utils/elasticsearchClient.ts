@@ -44,6 +44,7 @@ export const searchGadgets = async (query: string, userId: string) => {
             multi_match: {
               query,
               fields: ["name^2", "status"],
+              fuzziness: "AUTO", // Fuzzy search for partial matches and small typos
             },
           },
           { term: { userId } },
