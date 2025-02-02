@@ -6,6 +6,7 @@ import {
   updateGadget,
   decommissionGadget,
   selfDestructGadget,
+  searchGadgetsByTerm,
   CACHE_KEYS,
 } from "../controllers/gadgets";
 
@@ -22,6 +23,7 @@ router.get(
   }),
   getGadgets as RequestHandler
 );
+router.get("/search", searchGadgetsByTerm as RequestHandler);
 router.post("/", createGadget as RequestHandler);
 router.patch("/:id", updateGadget as RequestHandler);
 router.delete("/:id", decommissionGadget as RequestHandler);

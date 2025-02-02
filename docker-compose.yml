@@ -1,12 +1,16 @@
+version: "3.7"
+
 services:
   app:
     build: .
     env_file: .env
     ports:
       - 3000:3000
+      - 5555:5555
     depends_on:
       - db
       - redis
+      - elasticsearch
 
   db:
     image: postgres
@@ -21,3 +25,20 @@ services:
     image: redis
     ports:
       - 6379:6379
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - logger.level=ERROR
+      - logger.org.elasticsearch=ERROR
+      - logger.action=ERROR
+    ports:
+      - 9200:9200
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+
+volumes:
+  elasticsearch-data:

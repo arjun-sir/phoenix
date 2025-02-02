@@ -6,6 +6,11 @@ import {
   getCachedCode,
   saveCodeToRedis,
 } from "../middlewares/cache";
+import {
+  indexGadget,
+  searchGadgets,
+  deleteGadgetFromIndex,
+} from "../utils/elasticsearchClient";
 
 const prisma = new PrismaClient();
 
@@ -91,6 +96,9 @@ export const createGadget = async (req: Request, res: Response) => {
       },
     });
 
+    // Index the new gadget in Elasticsearch
+    await indexGadget(newGadget);
+
     await Promise.all([
       invalidateCache(CACHE_KEYS.ALL_GADGETS(userId)),
       invalidateCache(CACHE_KEYS.STATUS_GADGETS("Available", userId)),
@@ -133,11 +141,14 @@ export const updateGadget = async (req: Request, res: Response) => {
         DecommissionedAt:
           status === "Decommissioned"
             ? existingGadget.DecommissionedAt
-              ? existingGadget.DecommissionedAt // Keep existing date if already set
-              : new Date() // Set new date if not already decommissioned
+              ? existingGadget.DecommissionedAt
+              : new Date()
             : existingGadget.DecommissionedAt,
       },
     });
+
+    // Update the gadget in Elasticsearch
+    await indexGadget(updatedGadget);
 
     await Promise.all([
       invalidateCache(CACHE_KEYS.ALL_GADGETS(userId)),
@@ -179,6 +190,9 @@ export const decommissionGadget = async (req: Request, res: Response) => {
       },
     });
 
+    // Update the gadget in Elasticsearch
+    await indexGadget(decommissionedGadget);
+
     await Promise.all([
       invalidateCache(CACHE_KEYS.ALL_GADGETS(userId)),
       invalidateCache(CACHE_KEYS.STATUS_GADGETS(existingGadget.status, userId)),
@@ -215,20 +229,17 @@ export const selfDestructGadget = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Gadget is already destroyed" });
     }
 
-    // Get cached code or generate new one
     let validCode = await getCachedCode(CACHE_KEYS.DESTRUCT_CODE(id));
 
     if (!validCode) {
-      // Generate a random 6-digit code between 100000 and 999999
       validCode = Math.floor(Math.random() * 900000 + 100000).toString();
-      // Cache for 5 minutes
       await saveCodeToRedis(CACHE_KEYS.DESTRUCT_CODE(id), validCode);
     }
 
     if (confirmationCodeNum !== Number(validCode)) {
       return res.status(400).json({
         error: "Invalid confirmation code",
-        validCode, // Included for testing purposes
+        validCode,
       });
     }
 
@@ -237,11 +248,14 @@ export const selfDestructGadget = async (req: Request, res: Response) => {
       data: { status: "Destroyed" },
     });
 
+    // Remove the gadget from Elasticsearch
+    await deleteGadgetFromIndex(id);
+
     await Promise.all([
       invalidateCache(CACHE_KEYS.ALL_GADGETS(userId)),
       invalidateCache(CACHE_KEYS.STATUS_GADGETS(existingGadget.status, userId)),
       invalidateCache(CACHE_KEYS.STATUS_GADGETS("Destroyed", userId)),
-      invalidateCache(CACHE_KEYS.DESTRUCT_CODE(id)), // Clear the code after successful destruction
+      invalidateCache(CACHE_KEYS.DESTRUCT_CODE(id)),
     ]);
 
     res.json({
@@ -250,5 +264,22 @@ export const selfDestructGadget = async (req: Request, res: Response) => {
     });
   } catch (error) {
     res.status(500).json({ error: "Failed to destroy gadget" });
+  }
+};
+
+export const searchGadgetsByTerm = async (req: Request, res: Response) => {
+  const { query } = req.query;
+  const userId = req.user!.id;
+
+  if (!query || typeof query !== "string") {
+    return res.status(400).json({ error: "Search query is required" });
+  }
+
+  try {
+    const results = await searchGadgets(query, userId);
+    res.json(results);
+  } catch (error) {
+    console.error("Search error:", error);
+    res.status(500).json({ error: "Failed to search gadgets" });
   }
 };

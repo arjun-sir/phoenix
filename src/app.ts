@@ -7,8 +7,12 @@ import { RequestHandler } from "express";
 import swaggerUi from "swagger-ui-express";
 import YAML from "yamljs";
 import path from "path";
+import { initializeElasticsearch } from "./utils/elasticsearchClient";
 
 const app = express();
+
+// Initialize Elasticsearch
+initializeElasticsearch().catch(console.error);
 
 // Trust proxy headers (needed for rate limiting behind reverse proxy)
 app.set("trust proxy", 1);
